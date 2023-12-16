@@ -11,11 +11,14 @@ import (
 
 func main() {
 	taxRates := []float64{0, 0.07, 0.1, 0.15}
+	doneChans := make([]chan bool, len(taxRates))
+	errorChans := make([]chan error, len(taxRates))
 
 	const useFileMananger = true
 	const inputFilePath = "prices.txt"
 
-	for _, taxRate := range taxRates {
+	for index, taxRate := range taxRates {
+		doneChans[index] = make(chan bool)
 
 		var manager iomanager.IOManager
 
@@ -26,10 +29,19 @@ func main() {
 		}
 
 		priceJob := *prices.NewTaxIncludedPriceJob(manager, taxRate)
-		err := priceJob.Process()
-		if err != nil {
-			fmt.Println("could not process job")
-			fmt.Println(err)
+
+		go priceJob.Process(doneChans[index], errorChans[index])
+	}
+
+	for index := range taxRates {
+		// whichever channel emits a value first will be processed
+		select {
+		case err := <-errorChans[index]:
+			if err != nil {
+				fmt.Println(err)
+			}
+		case <-doneChans[index]:
+			fmt.Println("Done")
 		}
 	}
 
